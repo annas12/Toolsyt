@@ -3,11 +3,9 @@ import { useState } from 'react'
 export type Filters = {
   keyword: string
   format: string
-  period: string
   ranking: string
   age: string
   minViews: string
-  minGrowth: string
   minVph: string
 }
 
@@ -32,11 +30,13 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
             type="text"
             value={filters.keyword}
             onChange={(e) => set('keyword', e.target.value)}
-            placeholder="Contoh: dangdut koplo"
+            placeholder="Contoh: dangdut koplo, asam lambung, AI news"
             onKeyDown={(e) => { if (e.key === 'Enter') onRefresh() }}
           />
         </Field>
-        <div className="help-text">Hasil hanya menampilkan video yang judulnya benar-benar mengandung keyword. Contoh: “dangdut koplo”.</div>
+        <div className="help-text">
+          Tool mencari semua jenis video YouTube. Hanya video yang judulnya benar-benar mengandung keyword ini yang ditampilkan.
+        </div>
       </div>
 
       <div className="filter-grid primary-filters">
@@ -56,18 +56,8 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
             <option value="168">&lt; 7 Hari</option>
             <option value="336">&lt; 14 Hari</option>
             <option value="720">&lt; 30 Hari</option>
-          </select>
-        </Field>
-
-        <Field label="Period Growth">
-          <select value={filters.period} onChange={(e) => set('period', e.target.value)}>
-            <option value="6">6 Jam</option>
-            <option value="12">12 Jam</option>
-            <option value="24">24 Jam</option>
-            <option value="72">3 Hari</option>
-            <option value="168">7 Hari</option>
-            <option value="336">14 Hari</option>
-            <option value="720">30 Hari</option>
+            <option value="2160">&lt; 90 Hari</option>
+            <option value="8760">&lt; 1 Tahun</option>
           </select>
         </Field>
 
@@ -75,9 +65,9 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
           <select value={filters.ranking} onChange={(e) => set('ranking', e.target.value)}>
             <option value="views">Most Viewed</option>
             <option value="newest">Newest</option>
-            <option value="rising">Rising Now</option>
-            <option value="growth">Fastest Growth</option>
+            <option value="vph">Highest Views / Hour</option>
             <option value="engagement">Highest Engagement</option>
+            <option value="rising">Rising Score</option>
           </select>
         </Field>
       </div>
@@ -96,18 +86,7 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
             </select>
           </Field>
 
-          <Field label="Minimum Growth">
-            <select value={filters.minGrowth} onChange={(e) => set('minGrowth', e.target.value)}>
-              <option value="0">Semua</option>
-              <option value="10">10%+</option>
-              <option value="25">25%+</option>
-              <option value="50">50%+</option>
-              <option value="100">100%+</option>
-              <option value="200">200%+</option>
-            </select>
-          </Field>
-
-          <Field label="Views / Hour">
+          <Field label="Average Views / Hour">
             <select value={filters.minVph} onChange={(e) => set('minVph', e.target.value)}>
               <option value="0">Semua</option>
               <option value="100">100+</option>
