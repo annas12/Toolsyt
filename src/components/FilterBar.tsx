@@ -12,6 +12,7 @@ export type Filters = {
   minViews: string
   minGrowth: string
   minVph: string
+  marketMode: 'accurate' | 'expanded'
 }
 
 type Props = {
@@ -31,13 +32,13 @@ const countries = [
 
 export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Props) {
   const [showMore, setShowMore] = useState(false)
-  const set = (key: keyof Filters, value: string) => onChange({ ...filters, [key]: value })
+  const set = (key: keyof Filters, value: string) => onChange({ ...filters, [key]: value } as Filters)
   const subs = GENRES[filters.genre] || []
 
   return (
     <div className="filter-panel">
       <div className="filter-grid primary-filters">
-        <Field label="Country">
+        <Field label="Viewer Market">
           <select value={filters.country} onChange={(e) => set('country', e.target.value)}>
             {countries.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
           </select>
@@ -79,6 +80,12 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
 
       {showMore && (
         <div className="filter-grid more-filters">
+          <Field label="Market Data Mode">
+            <select value={filters.marketMode} onChange={(e) => set('marketMode', e.target.value)}>
+              <option value="accurate">Akurat Market (Chart)</option>
+              <option value="expanded">Diperluas (Estimasi)</option>
+            </select>
+          </Field>
           <Field label="Video Age">
             <select value={filters.age} onChange={(e) => set('age', e.target.value)}>
               <option value="all">All</option><option value="24">&lt; 24 Hours</option><option value="72">&lt; 3 Days</option>
