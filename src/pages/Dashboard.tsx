@@ -57,9 +57,9 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="hero-badge">API: {loadSettings().apiKey ? 'Connected' : 'Not set'}</div>
       </section>
 
-      <FilterBar filters={filters} onChange={setFilters} onRefresh={refresh} loading={loading} />
+      <FilterBar filters={filters} onChange={setFilters} onRefresh={refresh} loading={loading} hasData={videos.length > 0} />
       {error && <div className="status-box error">{error}</div>}
-      {!videos.length && !loading && <div className="empty-state"><div className="empty-icon">♫</div><h3>Belum ada data</h3><p>Masukkan API key lalu klik Refresh Data untuk mulai riset.</p><button className="btn primary" onClick={refresh}>Mulai Riset</button></div>}
+      {!videos.length && !loading && <div className="empty-state"><div className="empty-icon">♫</div><h3>Siap mulai riset</h3><p>Pilih filter di atas lalu klik Mulai Riset untuk mengambil data YouTube.</p><button className="btn primary" onClick={refresh}>▶ Mulai Riset</button></div>}
 
       {!!rows.length && <div className="table-card">
         <div className="table-head"><div><h2>Music Results</h2><p>{rows.length} video dari market {filters.country}</p></div><span className="snapshot-note">Growth akan makin akurat setelah beberapa snapshot.</span></div>
