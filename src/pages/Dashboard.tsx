@@ -19,7 +19,7 @@ const MARKET_LANGUAGE: Record<string, string> = {
 
 const initialFilters: Filters = {
   country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'views',
-  age: 'all', minViews: '0', minGrowth: '0', minVph: '0',
+  age: 'all', minViews: '0', minGrowth: '0', minVph: '0', marketMode: 'accurate',
 }
 
 function dedupeVideos(videos: YouTubeVideo[]) {
@@ -35,7 +35,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
   const [hasRun, setHasRun] = useState(false)
 
   const handleFilterChange = (next: Filters) => {
-    if (next.country !== filters.country) {
+    if (next.country !== filters.country || next.marketMode !== filters.marketMode) {
       setVideos([])
       setChartVideoIds([])
       setHasRun(false)
@@ -66,30 +66,34 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       const chartItems = await getPopularMusicPool(apiKey, filters.country, REGIONAL_CHART_PAGES)
       let merged = [...chartItems]
 
-      const chartMatches = chartItems.filter(qualifies).length
-      if (chartMatches < MIN_RESULTS_TARGET) {
-        const query = filters.subgenre !== 'All Subgenres'
-          ? filters.subgenre
-          : filters.genre !== 'All Genres'
-            ? filters.genre
-            : 'music'
+      // Accurate mode: hanya chart regional. Ini satu-satunya sinyal publik Data API
+      // yang benar-benar memilih chart berdasarkan content region.
+      if (filters.marketMode === 'expanded') {
+        const chartMatches = chartItems.filter(qualifies).length
+        if (chartMatches < MIN_RESULTS_TARGET) {
+          const query = filters.subgenre !== 'All Subgenres'
+            ? filters.subgenre
+            : filters.genre !== 'All Genres'
+              ? filters.genre
+              : 'music'
 
-        const ageHours = filters.age === 'all' ? null : Number(filters.age)
-        const publishedAfter = ageHours
-          ? new Date(Date.now() - ageHours * 3600_000).toISOString()
-          : undefined
+          const ageHours = filters.age === 'all' ? null : Number(filters.age)
+          const publishedAfter = ageHours
+            ? new Date(Date.now() - ageHours * 3600_000).toISOString()
+            : undefined
 
-        const discoveryItems = await getRegionalDiscoveryPool(apiKey, {
-          regionCode: filters.country,
-          relevanceLanguage: MARKET_LANGUAGE[filters.country] || 'en',
-          query,
-          maxResults: 50,
-          order: 'viewCount',
-          publishedAfter,
-          videoDuration: filters.format === 'shorts' ? 'short' : 'any',
-        }, DISCOVERY_PAGES)
+          const discoveryItems = await getRegionalDiscoveryPool(apiKey, {
+            regionCode: filters.country,
+            relevanceLanguage: MARKET_LANGUAGE[filters.country] || 'en',
+            query,
+            maxResults: 50,
+            order: 'viewCount',
+            publishedAfter,
+            videoDuration: filters.format === 'shorts' ? 'short' : 'any',
+          }, DISCOVERY_PAGES)
 
-        merged = dedupeVideos([...chartItems, ...discoveryItems])
+          merged = dedupeVideos([...chartItems, ...discoveryItems])
+        }
       }
 
       cacheVideos(merged)
@@ -160,7 +164,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div>
           <span className="eyebrow">YOUTUBE MUSIC RESEARCH</span>
           <h1>Music Trend Radar</h1>
-          <p>Riset musik berdasarkan market regional YouTube, bukan negara asal channel.</p>
+          <p>Riset musik berdasarkan viewer market YouTube. Mode Akurat hanya memakai chart regional; mode Diperluas menambah discovery estimasi.</p>
         </div>
         <div className="hero-badge">API: {loadSettings().apiKey ? 'Connected' : 'Not set'}</div>
       </section>
@@ -171,13 +175,19 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
       {hasRun && !loading && !error && (
         <div className="status-box success">
-          Market {filters.country}: Regional Chart + Regional Discovery • {videos.length} kandidat dianalisis. Negara di sini adalah market/region, bukan negara pembuat channel.
+          Viewer Market {filters.country} • Mode {filters.marketMode === 'accurate' ? 'Akurat Market' : 'Diperluas'} • {videos.length} kandidat dianalisis.
         </div>
       )}
 
-      {hasRun && !loading && !error && discoveryResultCount > 0 && (
+      {filters.marketMode === 'accurate' && hasRun && !loading && !error && (
         <div className="status-box">
-          {chartResultCount} hasil berasal dari Regional Chart (sinyal market lebih kuat) dan {discoveryResultCount} hasil tambahan dari Regional Discovery agar hasil lebih banyak. Data negara penonton yang eksak untuk video kompetitor tidak tersedia secara publik di YouTube Data API.
+          Mode Akurat hanya memakai YouTube regional mostPopular chart. Hasil antarnegara benar-benar berasal dari chart region yang dipilih, tetapi jumlah setelah filter genre/umur bisa kurang dari 20.
+        </div>
+      )}
+
+      {filters.marketMode === 'expanded' && hasRun && !loading && !error && discoveryResultCount > 0 && (
+        <div className="status-box">
+          {chartResultCount} hasil berasal dari Regional Chart dan {discoveryResultCount} hasil tambahan dari Regional Discovery. Discovery membantu mencapai lebih banyak hasil, tetapi bukan data negara penonton yang eksak.
         </div>
       )}
 
@@ -191,9 +201,9 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         </div>
       )}
 
-      {hasRun && !loading && !error && rows.length > 0 && rows.length < MIN_RESULTS_TARGET && (
+      {filters.marketMode === 'expanded' && hasRun && !loading && !error && rows.length > 0 && rows.length < MIN_RESULTS_TARGET && (
         <div className="status-box">
-          Sistem sudah memperluas kandidat dari Regional Chart ke Regional Discovery, tetapi hanya {rows.length} video yang memenuhi seluruh filter aktif. Longgarkan filter jika ingin minimal {MIN_RESULTS_TARGET} hasil.
+          Mode Diperluas sudah mencoba menambah discovery, tetapi hanya {rows.length} video yang memenuhi seluruh filter aktif. Longgarkan filter jika ingin minimal {MIN_RESULTS_TARGET} hasil.
         </div>
       )}
 
@@ -201,7 +211,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="empty-state">
           <div className="empty-icon">♫</div>
           <h3>Siap mulai riset</h3>
-          <p>Pilih market dan filter, lalu klik Mulai Riset. Sistem akan menargetkan minimal 20 hasil dengan tetap memprioritaskan sinyal regional.</p>
+          <p>Pilih Viewer Market dan filter, lalu klik Mulai Riset. Default menggunakan Mode Akurat Market agar pergantian negara tidak tercampur hasil discovery global.</p>
           <button className="btn primary" onClick={refresh}>▶ Mulai Riset</button>
         </div>
       )}
@@ -210,7 +220,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
           <h3>Tidak ada kandidat</h3>
-          <p>Coba market lain atau ulangi beberapa saat lagi.</p>
+          <p>Coba viewer market lain atau ulangi beberapa saat lagi.</p>
         </div>
       )}
 
@@ -218,7 +228,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
           <h3>Data ditemukan, tetapi tidak lolos filter</h3>
-          <p>{videos.length} kandidat telah dianalisis untuk market {filters.country}, tetapi tidak ada yang memenuhi seluruh filter aktif.</p>
+          <p>{videos.length} kandidat telah dianalisis untuk viewer market {filters.country}, tetapi tidak ada yang memenuhi seluruh filter aktif.</p>
           <button className="btn secondary" onClick={resetStrictFilters}>Reset Filter Ketat</button>
         </div>
       )}
@@ -228,7 +238,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
           <div className="table-head">
             <div>
               <h2>Music Results</h2>
-              <p>Menampilkan {displayedRows.length} dari {rows.length} hasil • market {filters.country}</p>
+              <p>Menampilkan {displayedRows.length} dari {rows.length} hasil • viewer market {filters.country}</p>
             </div>
             <span className="snapshot-note">Default: view tertinggi. Growth makin akurat setelah beberapa snapshot.</span>
           </div>
@@ -245,7 +255,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
                     <Link to={`/video/${video.id}`} className="video-title">{video.snippet.title}</Link>
                     <Link to={`/channel/${video.snippet.channelId}`} className="channel-link">{video.snippet.channelTitle}</Link>
                     <div className="chips">
-                      <span>{isChart ? 'Regional Chart' : 'Regional Discovery'}</span>
+                      <span>{isChart ? 'Regional Chart' : 'Discovery Estimate'}</span>
                       <span>{videoFormat === 'shorts' ? 'Shorts ≤3m' : 'Video'}</span>
                       <span>{formatDuration(video.contentDetails?.duration)}</span>
                       <span>{metrics.genre.genre}</span>
