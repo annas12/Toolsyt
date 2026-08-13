@@ -24,55 +24,7 @@ export async function testApiKey(apiKey: string) {
   return true
 }
 
-type VideoListResponse = {
-  items: YouTubeVideo[]
-  nextPageToken?: string
-}
-
-export async function getPopularMusicPage(
-  apiKey: string,
-  regionCode = 'ID',
-  maxResults = 50,
-  pageToken = '',
-) {
-  const params: Record<string, string | number> = {
-    part: 'snippet,statistics,contentDetails',
-    chart: 'mostPopular',
-    regionCode,
-    videoCategoryId: '10',
-    maxResults: Math.min(50, Math.max(1, maxResults)),
-  }
-  if (pageToken) params.pageToken = pageToken
-
-  const data = await youtubeFetch<VideoListResponse>('videos', params, apiKey)
-  return {
-    videos: data.items || [],
-    nextPageToken: data.nextPageToken || '',
-  }
-}
-
-export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResults = 50) {
-  const { videos } = await getPopularMusicPage(apiKey, regionCode, maxResults)
-  return videos
-}
-
-export async function getPopularMusicPool(apiKey: string, regionCode = 'ID', maxPages = 6) {
-  const collected: YouTubeVideo[] = []
-  let pageToken = ''
-
-  for (let page = 0; page < Math.max(1, maxPages); page += 1) {
-    const result = await getPopularMusicPage(apiKey, regionCode, 50, pageToken)
-    collected.push(...result.videos)
-    pageToken = result.nextPageToken
-    if (!pageToken || result.videos.length === 0) break
-  }
-
-  return Array.from(new Map(collected.map((video) => [video.id, video])).values())
-}
-
-type SearchMusicOptions = {
-  regionCode?: string
-  relevanceLanguage?: string
+type SearchVideoOptions = {
   query: string
   maxResults?: number
   order?: 'date' | 'rating' | 'relevance' | 'title' | 'viewCount'
@@ -81,20 +33,19 @@ type SearchMusicOptions = {
   pageToken?: string
 }
 
-export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
+/**
+ * Pencarian global semua kategori video YouTube.
+ * Tidak memakai videoCategoryId sehingga hasil tidak lagi dibatasi ke kategori Music.
+ */
+export async function searchVideos(apiKey: string, options: SearchVideoOptions) {
   const params: Record<string, string | number> = {
     part: 'snippet',
     q: options.query,
     type: 'video',
-    videoCategoryId: '10',
     maxResults: Math.min(50, options.maxResults || 50),
     order: options.order || 'relevance',
   }
 
-  // Jangan mengunci pencarian ke negara tertentu jika regionCode tidak diminta.
-  // Ini membuat mode Keyword Judul menjadi pencarian musik global.
-  if (options.regionCode) params.regionCode = options.regionCode
-  if (options.relevanceLanguage) params.relevanceLanguage = options.relevanceLanguage
   if (options.publishedAfter) params.publishedAfter = options.publishedAfter
   if (options.videoDuration && options.videoDuration !== 'any') params.videoDuration = options.videoDuration
   if (options.pageToken) params.pageToken = options.pageToken
@@ -116,14 +67,14 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
 
 export async function getDiscoveryPool(
   apiKey: string,
-  options: Omit<SearchMusicOptions, 'pageToken'>,
+  options: Omit<SearchVideoOptions, 'pageToken'>,
   maxPages = 3,
 ) {
   const collected: YouTubeVideo[] = []
   let pageToken = ''
 
   for (let page = 0; page < Math.max(1, maxPages); page += 1) {
-    const result = await searchMusic(apiKey, { ...options, pageToken })
+    const result = await searchVideos(apiKey, { ...options, pageToken })
     collected.push(...result.videos)
     pageToken = result.nextPageToken
     if (!pageToken || result.videos.length === 0) break
@@ -131,9 +82,6 @@ export async function getDiscoveryPool(
 
   return Array.from(new Map(collected.map((video) => [video.id, video])).values())
 }
-
-// Alias lama dipertahankan supaya kode lain yang mungkin masih memakainya tidak rusak.
-export const getRegionalDiscoveryPool = getDiscoveryPool
 
 export async function getVideosByIds(apiKey: string, ids: string[]) {
   if (!ids.length) return []
