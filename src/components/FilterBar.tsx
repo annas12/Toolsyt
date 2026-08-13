@@ -18,6 +18,7 @@ type Props = {
   onChange: (next: Filters) => void
   onRefresh: () => void
   loading: boolean
+  hasData: boolean
 }
 
 const countries = [
@@ -27,7 +28,7 @@ const countries = [
   ['MX', '🇲🇽 Mexico'], ['AU', '🇦🇺 Australia'], ['CA', '🇨🇦 Canada'],
 ]
 
-export function FilterBar({ filters, onChange, onRefresh, loading }: Props) {
+export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Props) {
   const [showMore, setShowMore] = useState(false)
   const set = (key: keyof Filters, value: string) => onChange({ ...filters, [key]: value })
   const subs = GENRES[filters.genre] || []
@@ -96,7 +97,7 @@ export function FilterBar({ filters, onChange, onRefresh, loading }: Props) {
 
       <div className="filter-actions">
         <button className="btn ghost" onClick={() => setShowMore(!showMore)}>{showMore ? '− Less Filters' : '+ More Filters'}</button>
-        <button className="btn primary" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : '↻ Refresh Data'}</button>
+        <button className="btn primary" onClick={onRefresh} disabled={loading}>{loading ? 'Menganalisis...' : hasData ? '↻ Riset Ulang' : '▶ Mulai Riset'}</button>
       </div>
     </div>
   )
