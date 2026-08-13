@@ -68,8 +68,11 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
         </Field>
         <Field label="Ranking">
           <select value={filters.ranking} onChange={(e) => set('ranking', e.target.value)}>
-            <option value="rising">Rising Now</option><option value="growth">Fastest Growth</option><option value="views">Most Viewed</option>
-            <option value="engagement">Highest Engagement</option><option value="newest">Newest</option>
+            <option value="views">Most Viewed</option>
+            <option value="rising">Rising Now</option>
+            <option value="growth">Fastest Growth</option>
+            <option value="engagement">Highest Engagement</option>
+            <option value="newest">Newest</option>
           </select>
         </Field>
       </div>
