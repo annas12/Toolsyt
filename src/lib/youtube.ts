@@ -35,6 +35,37 @@ export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResu
   return data.items || []
 }
 
+type SearchMusicOptions = {
+  regionCode?: string
+  query: string
+  maxResults?: number
+  order?: 'date' | 'rating' | 'relevance' | 'title' | 'viewCount'
+  publishedAfter?: string
+}
+
+export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
+  const params: Record<string, string | number> = {
+    part: 'snippet',
+    q: options.query,
+    type: 'video',
+    videoCategoryId: '10',
+    regionCode: options.regionCode || 'ID',
+    maxResults: Math.min(50, options.maxResults || 50),
+    order: options.order || 'relevance',
+  }
+  if (options.publishedAfter) params.publishedAfter = options.publishedAfter
+
+  const data = await youtubeFetch<{
+    items: Array<{ id?: { videoId?: string } }>
+  }>('search', params, apiKey)
+
+  const ids = (data.items || [])
+    .map((item) => item.id?.videoId)
+    .filter(Boolean) as string[]
+
+  return getVideosByIds(apiKey, ids)
+}
+
 export async function getVideosByIds(apiKey: string, ids: string[]) {
   if (!ids.length) return []
   const data = await youtubeFetch<{ items: YouTubeVideo[] }>('videos', {
