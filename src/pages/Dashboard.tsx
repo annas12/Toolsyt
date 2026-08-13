@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FilterBar, type Filters } from '../components/FilterBar'
-import { calculateMetrics, formatAge, formatCompact, formatDateTime } from '../lib/metrics'
+import { calculateMetrics, formatAge, formatCompact, formatDateTime, formatDuration, getVideoFormat } from '../lib/metrics'
 import { cacheVideos, loadSettings, saveVideoSnapshots } from '../lib/storage'
 import { getPopularMusic, searchMusic } from '../lib/youtube'
 import type { YouTubeVideo } from '../types'
 
 const initialFilters: Filters = {
-  country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', period: '24', ranking: 'rising',
+  country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'rising',
   age: 'all', minViews: '0', minGrowth: '0', minVph: '0',
 }
 
@@ -26,11 +26,16 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
     try {
       let items: YouTubeVideo[] = []
+      const needsSearch = filters.genre !== 'All Genres' || filters.format === 'shorts'
 
-      if (filters.genre === 'All Genres') {
+      if (!needsSearch) {
         items = await getPopularMusic(apiKey, filters.country, 50)
       } else {
-        const query = filters.subgenre !== 'All Subgenres' ? filters.subgenre : filters.genre
+        const query = filters.subgenre !== 'All Subgenres'
+          ? filters.subgenre
+          : filters.genre !== 'All Genres'
+            ? filters.genre
+            : 'music'
         const ageHours = filters.age === 'all' ? null : Number(filters.age)
         const publishedAfter = ageHours
           ? new Date(Date.now() - ageHours * 3600_000).toISOString()
@@ -48,6 +53,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
           maxResults: 50,
           order,
           publishedAfter,
+          videoDuration: filters.format === 'shorts' ? 'short' : 'any',
         })
       }
 
@@ -71,10 +77,10 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
     if (filters.genre !== 'All Genres') mapped = mapped.filter((x) => x.metrics.genre.genre === filters.genre)
     if (filters.subgenre !== 'All Subgenres') mapped = mapped.filter((x) => x.metrics.genre.subgenre === filters.subgenre)
+    if (filters.format !== 'all') mapped = mapped.filter((x) => getVideoFormat(x.video) === filters.format)
     if (filters.age !== 'all') mapped = mapped.filter((x) => x.metrics.ageHours <= Number(filters.age))
     mapped = mapped.filter((x) => x.metrics.views >= Number(filters.minViews))
 
-    // Growth membutuhkan snapshot historis. Pada riset pertama, jangan membuat hasil hilang total.
     if (Number(filters.minGrowth) > 0 && hasGrowthData) {
       mapped = mapped.filter((x) => (x.metrics.growthPercent ?? -1) >= Number(filters.minGrowth))
     }
@@ -99,6 +105,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       ...current,
       genre: 'All Genres',
       subgenre: 'All Subgenres',
+      format: 'all',
       age: 'all',
       minViews: '0',
       minGrowth: '0',
@@ -122,6 +129,10 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
       {error && <div className="status-box error">{error}</div>}
 
+      {filters.format === 'shorts' && (
+        <div className="status-box">Filter Shorts memakai durasi ≤ 3 menit sebagai estimasi karena YouTube Data API tidak menyediakan flag Shorts publik yang eksplisit.</div>
+      )}
+
       {hasRun && videos.length > 0 && Number(filters.minGrowth) > 0 && !hasGrowthData && (
         <div className="status-box">
           Minimum Growth belum bisa dihitung pada snapshot pertama. Hasil sementara tetap ditampilkan berdasarkan data saat ini. Riset ulang setelah beberapa waktu agar Growth % mulai tersedia.
@@ -141,7 +152,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
           <h3>YouTube tidak menemukan kandidat</h3>
-          <p>Coba longgarkan Video Age, pilih subgenre lain, atau gunakan All Genres.</p>
+          <p>Coba longgarkan Video Age, pilih format atau subgenre lain, atau gunakan All Genres.</p>
           <button className="btn secondary" onClick={resetStrictFilters}>Reset Filter Ketat</button>
         </div>
       )}
@@ -167,6 +178,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
           <div className="video-list">
             {rows.map(({ video, metrics }, index) => {
               const thumb = video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url
+              const videoFormat = getVideoFormat(video)
               return (
                 <article className="video-row" key={video.id}>
                   <div className="rank">#{index + 1}</div>
@@ -175,6 +187,8 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
                     <Link to={`/video/${video.id}`} className="video-title">{video.snippet.title}</Link>
                     <Link to={`/channel/${video.snippet.channelId}`} className="channel-link">{video.snippet.channelTitle}</Link>
                     <div className="chips">
+                      <span>{videoFormat === 'shorts' ? 'Shorts ≤3m' : 'Video'}</span>
+                      <span>{formatDuration(video.contentDetails?.duration)}</span>
                       <span>{metrics.genre.genre}</span>
                       <span>{metrics.genre.subgenre}</span>
                       <span>{formatAge(metrics.ageHours)}</span>
