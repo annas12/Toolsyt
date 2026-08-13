@@ -8,10 +8,16 @@ async function youtubeFetch<T>(path: string, params: Record<string, string | num
   url.searchParams.set('key', apiKey)
 
   const response = await fetch(url.toString())
-  const data = await response.json()
+  const data = await response.json().catch(() => null)
   if (!response.ok) {
+    const reason = data?.error?.errors?.[0]?.reason
     const message = data?.error?.message || `YouTube API error ${response.status}`
-    throw new Error(message)
+    const hint = reason === 'forbidden' || reason === 'accessNotConfigured'
+      ? ' Pastikan YouTube Data API v3 aktif dan domain ini diizinkan pada pembatasan HTTP referrer API key.'
+      : reason === 'quotaExceeded'
+        ? ' Kuota harian YouTube API key sudah habis.'
+        : ''
+    throw new Error(`${message}${hint}`)
   }
   return data as T
 }
@@ -24,7 +30,7 @@ export async function testApiKey(apiKey: string) {
   return true
 }
 
-export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResults = 50) {
+export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResults = 50, periodHours = 24) {
   const data = await youtubeFetch<{ items: YouTubeVideo[] }>('videos', {
     part: 'snippet,statistics,contentDetails',
     chart: 'mostPopular',
@@ -32,7 +38,24 @@ export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResu
     videoCategoryId: '10',
     maxResults,
   }, apiKey)
-  return data.items || []
+  if (data.items?.length) return data.items
+
+  // Some regions do not publish a Music `mostPopular` chart. Fall back to a
+  // recent-video search so a valid API key still produces research results.
+  const publishedAfter = new Date(Date.now() - periodHours * 3600_000).toISOString()
+  const search = await youtubeFetch<{
+    items: Array<{ id?: { videoId?: string } }>
+  }>('search', {
+    part: 'id',
+    type: 'video',
+    videoCategoryId: '10',
+    regionCode,
+    order: 'viewCount',
+    publishedAfter,
+    maxResults,
+  }, apiKey)
+  const ids = (search.items || []).map((item) => item.id?.videoId).filter(Boolean) as string[]
+  return getVideosByIds(apiKey, ids)
 }
 
 export async function getVideosByIds(apiKey: string, ids: string[]) {

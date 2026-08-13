@@ -96,7 +96,7 @@ export function FilterBar({ filters, onChange, onRefresh, loading }: Props) {
 
       <div className="filter-actions">
         <button className="btn ghost" onClick={() => setShowMore(!showMore)}>{showMore ? '− Less Filters' : '+ More Filters'}</button>
-        <button className="btn primary" onClick={onRefresh} disabled={loading}>{loading ? 'Loading...' : '↻ Refresh Data'}</button>
+        <button className="btn primary" type="button" onClick={onRefresh} disabled={loading}>{loading ? 'Mengambil data...' : '▶ Mulai Riset'}</button>
       </div>
     </div>
   )

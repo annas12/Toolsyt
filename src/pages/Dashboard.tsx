@@ -16,19 +16,23 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
   const [videos, setVideos] = useState<YouTubeVideo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [hasSearched, setHasSearched] = useState(false)
 
   const refresh = async () => {
     const { apiKey } = loadSettings()
     if (!apiKey) return onNeedApiKey()
     setLoading(true); setError('')
     try {
-      const items = await getPopularMusic(apiKey, filters.country, 50)
+      const items = await getPopularMusic(apiKey, filters.country, 50, Number(filters.period))
       cacheVideos(items)
       setVideos(items)
       saveVideoSnapshots(items)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal mengambil data YouTube.')
-    } finally { setLoading(false) }
+    } finally {
+      setHasSearched(true)
+      setLoading(false)
+    }
   }
 
   const rows = useMemo(() => {
@@ -59,7 +63,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
       <FilterBar filters={filters} onChange={setFilters} onRefresh={refresh} loading={loading} />
       {error && <div className="status-box error">{error}</div>}
-      {!videos.length && !loading && <div className="empty-state"><div className="empty-icon">♫</div><h3>Belum ada data</h3><p>Masukkan API key lalu klik Refresh Data untuk mulai riset.</p><button className="btn primary" onClick={refresh}>Mulai Riset</button></div>}
+      {!videos.length && !loading && !error && <div className="empty-state"><div className="empty-icon">♫</div><h3>{hasSearched ? 'Tidak ada video ditemukan' : 'Siap mulai riset'}</h3><p>{hasSearched ? 'YouTube tidak mengembalikan video untuk market dan periode ini. Coba periode yang lebih panjang atau market lain.' : 'Pilih filter di atas lalu klik Mulai Riset untuk mengambil data YouTube.'}</p><button className="btn primary" onClick={refresh}>{hasSearched ? 'Coba Lagi' : 'Mulai Riset'}</button></div>}
 
       {!!rows.length && <div className="table-card">
         <div className="table-head"><div><h2>Music Results</h2><p>{rows.length} video dari market {filters.country}</p></div><span className="snapshot-note">Growth akan makin akurat setelah beberapa snapshot.</span></div>
