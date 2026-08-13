@@ -1,0 +1,4 @@
+.primary-filters{grid-template-columns:repeat(6,minmax(130px,1fr))}
+@media(max-width:1200px){.primary-filters{grid-template-columns:repeat(3,minmax(140px,1fr))}}
+@media(max-width:760px){.primary-filters{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.primary-filters{grid-template-columns:1fr}}
