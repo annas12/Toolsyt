@@ -7,7 +7,7 @@ import { getPopularMusic, searchMusic } from '../lib/youtube'
 import type { YouTubeVideo } from '../types'
 
 const initialFilters: Filters = {
-  country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'rising',
+  country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'views',
   age: 'all', minViews: '0', minGrowth: '0', minVph: '0',
 }
 
@@ -26,7 +26,11 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
     try {
       let items: YouTubeVideo[] = []
-      const needsSearch = filters.genre !== 'All Genres' || filters.format === 'shorts'
+      const needsSearch =
+        filters.genre !== 'All Genres' ||
+        filters.format === 'shorts' ||
+        filters.age !== 'all' ||
+        filters.ranking === 'views'
 
       if (!needsSearch) {
         items = await getPopularMusic(apiKey, filters.country, 50)
@@ -110,7 +114,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       minViews: '0',
       minGrowth: '0',
       minVph: '0',
-      ranking: 'rising',
+      ranking: 'views',
     }))
   }
 
