@@ -6,6 +6,32 @@ export function toNumber(value?: string) {
   return Number(value || 0)
 }
 
+export function parseIsoDurationSeconds(value?: string) {
+  if (!value) return 0
+  const match = value.match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/)
+  if (!match) return 0
+  const days = Number(match[1] || 0)
+  const hours = Number(match[2] || 0)
+  const minutes = Number(match[3] || 0)
+  const seconds = Number(match[4] || 0)
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds
+}
+
+export function getVideoFormat(video: YouTubeVideo): 'shorts' | 'video' {
+  const seconds = parseIsoDurationSeconds(video.contentDetails?.duration)
+  return seconds > 0 && seconds <= 180 ? 'shorts' : 'video'
+}
+
+export function formatDuration(value?: string) {
+  const total = parseIsoDurationSeconds(value)
+  if (!total) return '—'
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
 export function calculateMetrics(video: YouTubeVideo, periodHours = 24): VideoMetrics {
   const views = toNumber(video.statistics?.viewCount)
   const likes = toNumber(video.statistics?.likeCount)
@@ -55,8 +81,6 @@ export function formatDateTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Tanggal tidak tersedia'
 
-  // Gunakan komponen tanggal + waktu eksplisit. `dateStyle` tidak boleh
-  // dikombinasikan dengan opsi hour/minute pada Intl.DateTimeFormat.
   return new Intl.DateTimeFormat('id-ID', {
     day: '2-digit',
     month: 'short',
