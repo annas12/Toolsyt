@@ -24,15 +24,56 @@ export async function testApiKey(apiKey: string) {
   return true
 }
 
-export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResults = 50) {
-  const data = await youtubeFetch<{ items: YouTubeVideo[] }>('videos', {
+type VideoListResponse = {
+  items: YouTubeVideo[]
+  nextPageToken?: string
+}
+
+export async function getPopularMusicPage(
+  apiKey: string,
+  regionCode = 'ID',
+  maxResults = 50,
+  pageToken = '',
+) {
+  const params: Record<string, string | number> = {
     part: 'snippet,statistics,contentDetails',
     chart: 'mostPopular',
     regionCode,
     videoCategoryId: '10',
-    maxResults,
-  }, apiKey)
-  return data.items || []
+    maxResults: Math.min(50, Math.max(1, maxResults)),
+  }
+  if (pageToken) params.pageToken = pageToken
+
+  const data = await youtubeFetch<VideoListResponse>('videos', params, apiKey)
+  return {
+    videos: data.items || [],
+    nextPageToken: data.nextPageToken || '',
+  }
+}
+
+export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResults = 50) {
+  const { videos } = await getPopularMusicPage(apiKey, regionCode, maxResults)
+  return videos
+}
+
+/**
+ * Ambil beberapa halaman chart Music yang benar-benar spesifik per region.
+ * Ini lebih tepat untuk riset market dibanding search.list(regionCode), karena
+ * search.regionCode hanya berarti video dapat ditonton di negara tersebut.
+ */
+export async function getPopularMusicPool(apiKey: string, regionCode = 'ID', maxPages = 6) {
+  const collected: YouTubeVideo[] = []
+  let pageToken = ''
+
+  for (let page = 0; page < Math.max(1, maxPages); page += 1) {
+    const result = await getPopularMusicPage(apiKey, regionCode, 50, pageToken)
+    collected.push(...result.videos)
+    pageToken = result.nextPageToken
+    if (!pageToken || result.videos.length === 0) break
+  }
+
+  // Defensive dedupe jika chart mengembalikan item yang sama antar halaman.
+  return Array.from(new Map(collected.map((video) => [video.id, video])).values())
 }
 
 type SearchMusicOptions = {
@@ -42,6 +83,7 @@ type SearchMusicOptions = {
   order?: 'date' | 'rating' | 'relevance' | 'title' | 'viewCount'
   publishedAfter?: string
   videoDuration?: 'any' | 'short' | 'medium' | 'long'
+  pageToken?: string
 }
 
 export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
@@ -56,16 +98,21 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
   }
   if (options.publishedAfter) params.publishedAfter = options.publishedAfter
   if (options.videoDuration && options.videoDuration !== 'any') params.videoDuration = options.videoDuration
+  if (options.pageToken) params.pageToken = options.pageToken
 
   const data = await youtubeFetch<{
     items: Array<{ id?: { videoId?: string } }>
+    nextPageToken?: string
   }>('search', params, apiKey)
 
   const ids = (data.items || [])
     .map((item) => item.id?.videoId)
     .filter(Boolean) as string[]
 
-  return getVideosByIds(apiKey, ids)
+  return {
+    videos: await getVideosByIds(apiKey, ids),
+    nextPageToken: data.nextPageToken || '',
+  }
 }
 
 export async function getVideosByIds(apiKey: string, ids: string[]) {
