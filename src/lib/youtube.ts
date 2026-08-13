@@ -57,9 +57,8 @@ export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResu
 }
 
 /**
- * Ambil beberapa halaman chart Music yang benar-benar spesifik per region.
- * Ini lebih tepat untuk riset market dibanding search.list(regionCode), karena
- * search.regionCode hanya berarti video dapat ditonton di negara tersebut.
+ * Sinyal pasar publik paling kuat yang tersedia di YouTube Data API:
+ * chart Music mostPopular untuk content region yang dipilih.
  */
 export async function getPopularMusicPool(apiKey: string, regionCode = 'ID', maxPages = 6) {
   const collected: YouTubeVideo[] = []
@@ -72,12 +71,12 @@ export async function getPopularMusicPool(apiKey: string, regionCode = 'ID', max
     if (!pageToken || result.videos.length === 0) break
   }
 
-  // Defensive dedupe jika chart mengembalikan item yang sama antar halaman.
   return Array.from(new Map(collected.map((video) => [video.id, video])).values())
 }
 
 type SearchMusicOptions = {
   regionCode?: string
+  relevanceLanguage?: string
   query: string
   maxResults?: number
   order?: 'date' | 'rating' | 'relevance' | 'title' | 'viewCount'
@@ -96,6 +95,7 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
     maxResults: Math.min(50, options.maxResults || 50),
     order: options.order || 'relevance',
   }
+  if (options.relevanceLanguage) params.relevanceLanguage = options.relevanceLanguage
   if (options.publishedAfter) params.publishedAfter = options.publishedAfter
   if (options.videoDuration && options.videoDuration !== 'any') params.videoDuration = options.videoDuration
   if (options.pageToken) params.pageToken = options.pageToken
@@ -113,6 +113,30 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
     videos: await getVideosByIds(apiKey, ids),
     nextPageToken: data.nextPageToken || '',
   }
+}
+
+/**
+ * Pool tambahan ketika chart regional terlalu kecil untuk genre/subgenre tertentu.
+ * Ini bukan data viewer geography yang eksak. Search.regionCode hanya membatasi
+ * hasil yang dapat ditonton pada region, sedangkan relevanceLanguage membantu
+ * membuat discovery lebih relevan dengan pasar yang dipilih.
+ */
+export async function getRegionalDiscoveryPool(
+  apiKey: string,
+  options: Omit<SearchMusicOptions, 'pageToken'>,
+  maxPages = 3,
+) {
+  const collected: YouTubeVideo[] = []
+  let pageToken = ''
+
+  for (let page = 0; page < Math.max(1, maxPages); page += 1) {
+    const result = await searchMusic(apiKey, { ...options, pageToken })
+    collected.push(...result.videos)
+    pageToken = result.nextPageToken
+    if (!pageToken || result.videos.length === 0) break
+  }
+
+  return Array.from(new Map(collected.map((video) => [video.id, video])).values())
 }
 
 export async function getVideosByIds(apiKey: string, ids: string[]) {
