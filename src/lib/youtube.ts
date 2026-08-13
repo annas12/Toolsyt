@@ -75,3 +75,8 @@ export async function getChannelVideosPage(apiKey: string, uploadsPlaylistId: st
   const videos = await getVideosByIds(apiKey, ids)
   return { videos, nextPageToken: playlist.nextPageToken || '' }
 }
+
+export async function getChannelVideos(apiKey: string, uploadsPlaylistId: string, maxResults = 50) {
+  const { videos } = await getChannelVideosPage(apiKey, uploadsPlaylistId, '', maxResults)
+  return videos
+}
