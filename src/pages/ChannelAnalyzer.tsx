@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { calculateMetrics, estimateRevenue, formatCompact, formatDateTime, formatUsd } from '../lib/metrics'
 import { loadSettings } from '../lib/storage'
-import { getChannel, getChannelVideos } from '../lib/youtube'
+import { getChannel, getChannelVideosPage } from '../lib/youtube'
 import type { YouTubeChannel, YouTubeVideo } from '../types'
 
 export function ChannelAnalyzer({ onNeedApiKey }: { onNeedApiKey: () => void }) {
@@ -18,7 +18,10 @@ export function ChannelAnalyzer({ onNeedApiKey }: { onNeedApiKey: () => void }) 
         const ch = await getChannel(apiKey, id)
         setChannel(ch)
         const uploads = ch?.contentDetails?.relatedPlaylists?.uploads
-        if (uploads) setVideos(await getChannelVideos(apiKey, uploads, 50))
+        if (uploads) {
+          const { videos: channelVideos } = await getChannelVideosPage(apiKey, uploads, '', 50)
+          setVideos(channelVideos)
+        }
       } catch (e) { setError(e instanceof Error ? e.message : 'Gagal memuat channel.') }
     })()
   }, [id, onNeedApiKey])
