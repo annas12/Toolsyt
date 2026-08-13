@@ -3,8 +3,12 @@ import { Link } from 'react-router-dom'
 import { FilterBar, type Filters } from '../components/FilterBar'
 import { calculateMetrics, formatAge, formatCompact, formatDateTime, formatDuration, getVideoFormat } from '../lib/metrics'
 import { cacheVideos, loadSettings, saveVideoSnapshots } from '../lib/storage'
-import { getPopularMusic, searchMusic } from '../lib/youtube'
+import { getPopularMusicPool } from '../lib/youtube'
 import type { YouTubeVideo } from '../types'
+
+const MIN_RESULTS_TARGET = 20
+const MAX_RESULTS_SHOWN = 50
+const REGIONAL_CHART_PAGES = 10
 
 const initialFilters: Filters = {
   country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'views',
@@ -18,6 +22,17 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
   const [error, setError] = useState('')
   const [hasRun, setHasRun] = useState(false)
 
+  const handleFilterChange = (next: Filters) => {
+    // Country adalah sumber data regional. Saat market berubah, buang hasil lama agar
+    // user tidak melihat video negara sebelumnya dengan label negara baru.
+    if (next.country !== filters.country) {
+      setVideos([])
+      setHasRun(false)
+      setError('')
+    }
+    setFilters(next)
+  }
+
   const refresh = async () => {
     const { apiKey } = loadSettings()
     if (!apiKey) return onNeedApiKey()
@@ -25,41 +40,10 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
     setError('')
 
     try {
-      let items: YouTubeVideo[] = []
-      const needsSearch =
-        filters.genre !== 'All Genres' ||
-        filters.format === 'shorts' ||
-        filters.age !== 'all' ||
-        filters.ranking === 'views'
-
-      if (!needsSearch) {
-        items = await getPopularMusic(apiKey, filters.country, 50)
-      } else {
-        const query = filters.subgenre !== 'All Subgenres'
-          ? filters.subgenre
-          : filters.genre !== 'All Genres'
-            ? filters.genre
-            : 'music'
-        const ageHours = filters.age === 'all' ? null : Number(filters.age)
-        const publishedAfter = ageHours
-          ? new Date(Date.now() - ageHours * 3600_000).toISOString()
-          : undefined
-
-        const order = filters.ranking === 'views'
-          ? 'viewCount'
-          : filters.ranking === 'engagement'
-            ? 'relevance'
-            : 'date'
-
-        items = await searchMusic(apiKey, {
-          regionCode: filters.country,
-          query,
-          maxResults: 50,
-          order,
-          publishedAfter,
-          videoDuration: filters.format === 'shorts' ? 'short' : 'any',
-        })
-      }
+      // Sumber utama selalu chart Music mostPopular yang spesifik untuk region.
+      // Ambil banyak halaman agar sesudah filter genre/format/umur masih ada peluang
+      // mendapatkan >=20 hasil yang relevan.
+      const items = await getPopularMusicPool(apiKey, filters.country, REGIONAL_CHART_PAGES)
 
       cacheVideos(items)
       setVideos(items)
@@ -103,6 +87,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
   }, [videos, filters])
 
   const { rows, hasGrowthData } = analysis
+  const displayedRows = rows.slice(0, MAX_RESULTS_SHOWN)
 
   const resetStrictFilters = () => {
     setFilters((current) => ({
@@ -129,9 +114,15 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="hero-badge">API: {loadSettings().apiKey ? 'Connected' : 'Not set'}</div>
       </section>
 
-      <FilterBar filters={filters} onChange={setFilters} onRefresh={refresh} loading={loading} hasData={hasRun} />
+      <FilterBar filters={filters} onChange={handleFilterChange} onRefresh={refresh} loading={loading} hasData={hasRun} />
 
       {error && <div className="status-box error">{error}</div>}
+
+      {hasRun && !loading && !error && (
+        <div className="status-box success">
+          Market source: YouTube Music mostPopular chart • Region {filters.country} • {videos.length} kandidat regional dianalisis.
+        </div>
+      )}
 
       {filters.format === 'shorts' && (
         <div className="status-box">Filter Shorts memakai durasi ≤ 3 menit sebagai estimasi karena YouTube Data API tidak menyediakan flag Shorts publik yang eksplisit.</div>
@@ -143,11 +134,17 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         </div>
       )}
 
+      {hasRun && !loading && !error && rows.length > 0 && rows.length < MIN_RESULTS_TARGET && (
+        <div className="status-box">
+          Hanya {rows.length} video pada chart regional {filters.country} yang memenuhi seluruh filter. Sistem sudah memperluas kandidat hingga beberapa halaman chart; longgarkan Genre/Subgenre, Format, Video Age, atau minimum metrics jika ingin minimal {MIN_RESULTS_TARGET} hasil.
+        </div>
+      )}
+
       {!hasRun && !loading && (
         <div className="empty-state">
           <div className="empty-icon">♫</div>
           <h3>Siap mulai riset</h3>
-          <p>Pilih filter di atas lalu klik Mulai Riset untuk mengambil data YouTube.</p>
+          <p>Pilih market dan filter, lalu klik Mulai Riset. Saat negara diganti, data lama otomatis dibersihkan agar tidak tercampur.</p>
           <button className="btn primary" onClick={refresh}>▶ Mulai Riset</button>
         </div>
       )}
@@ -155,32 +152,31 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       {hasRun && !loading && !error && videos.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
-          <h3>YouTube tidak menemukan kandidat</h3>
-          <p>Coba longgarkan Video Age, pilih format atau subgenre lain, atau gunakan All Genres.</p>
-          <button className="btn secondary" onClick={resetStrictFilters}>Reset Filter Ketat</button>
+          <h3>Chart regional tidak mengembalikan kandidat</h3>
+          <p>Coba market lain atau ulangi beberapa saat lagi.</p>
         </div>
       )}
 
       {hasRun && !loading && !error && videos.length > 0 && rows.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
-          <h3>Data ditemukan, tetapi tidak lolos filter</h3>
-          <p>YouTube mengembalikan {videos.length} kandidat. Tidak ada yang memenuhi seluruh filter yang aktif saat ini.</p>
+          <h3>Data regional ditemukan, tetapi tidak lolos filter</h3>
+          <p>YouTube mengembalikan {videos.length} kandidat dari chart market {filters.country}. Tidak ada yang memenuhi seluruh filter aktif.</p>
           <button className="btn secondary" onClick={resetStrictFilters}>Reset Filter Ketat</button>
         </div>
       )}
 
-      {!!rows.length && (
+      {!!displayedRows.length && (
         <div className="table-card">
           <div className="table-head">
             <div>
               <h2>Music Results</h2>
-              <p>{rows.length} hasil dari {videos.length} kandidat YouTube • market {filters.country}</p>
+              <p>Menampilkan {displayedRows.length} dari {rows.length} hasil • {videos.length} kandidat chart • market {filters.country}</p>
             </div>
-            <span className="snapshot-note">Growth akan makin akurat setelah beberapa snapshot.</span>
+            <span className="snapshot-note">Default: view tertinggi. Growth makin akurat setelah beberapa snapshot.</span>
           </div>
           <div className="video-list">
-            {rows.map(({ video, metrics }, index) => {
+            {displayedRows.map(({ video, metrics }, index) => {
               const thumb = video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url
               const videoFormat = getVideoFormat(video)
               return (
