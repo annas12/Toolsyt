@@ -41,6 +41,7 @@ type SearchMusicOptions = {
   maxResults?: number
   order?: 'date' | 'rating' | 'relevance' | 'title' | 'viewCount'
   publishedAfter?: string
+  videoDuration?: 'any' | 'short' | 'medium' | 'long'
 }
 
 export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
@@ -54,6 +55,7 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
     order: options.order || 'relevance',
   }
   if (options.publishedAfter) params.publishedAfter = options.publishedAfter
+  if (options.videoDuration && options.videoDuration !== 'any') params.videoDuration = options.videoDuration
 
   const data = await youtubeFetch<{
     items: Array<{ id?: { videoId?: string } }>
