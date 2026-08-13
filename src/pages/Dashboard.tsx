@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { FilterBar, type Filters } from '../components/FilterBar'
 import { calculateMetrics, formatAge, formatCompact, formatDateTime, formatDuration, getVideoFormat } from '../lib/metrics'
-import { cacheVideos, loadSettings, saveVideoSnapshots } from '../lib/storage'
+import { cacheVideos, loadSettings } from '../lib/storage'
 import { getDiscoveryPool } from '../lib/youtube'
 import type { YouTubeVideo } from '../types'
 
@@ -13,11 +13,9 @@ const KEYWORD_SEARCH_PAGES = 5
 const initialFilters: Filters = {
   keyword: '',
   format: 'all',
-  period: '24',
   ranking: 'views',
   age: 'all',
   minViews: '0',
-  minGrowth: '0',
   minVph: '0',
 }
 
@@ -64,7 +62,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
     const keyword = filters.keyword.trim()
     if (!keyword) {
-      setError('Isi Keyword Judul terlebih dahulu. Contoh: dangdut koplo.')
+      setError('Isi Keyword Judul terlebih dahulu. Contoh: dangdut koplo, asam lambung, AI news.')
       setVideos([])
       setHasRun(false)
       return
@@ -93,7 +91,6 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
       cacheVideos(strictTitleMatches)
       setVideos(strictTitleMatches)
-      saveVideoSnapshots(strictTitleMatches)
       setHasRun(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal mengambil data YouTube.')
@@ -103,15 +100,11 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
     }
   }
 
-  const analysis = useMemo(() => {
-    const periodHours = Number(filters.period)
-    const allMapped = videos.map((video) => ({
+  const rows = useMemo(() => {
+    let mapped = videos.map((video) => ({
       video,
-      metrics: calculateMetrics(video, periodHours),
+      metrics: calculateMetrics(video, 24),
     }))
-
-    const hasGrowthData = allMapped.some((x) => x.metrics.growthPercent != null)
-    let mapped = [...allMapped]
 
     mapped = mapped.filter((x) => titleContainsKeyword(x.video.snippet.title, filters.keyword))
 
@@ -124,21 +117,11 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
     }
 
     mapped = mapped.filter((x) => x.metrics.views >= Number(filters.minViews))
-
-    if (Number(filters.minGrowth) > 0 && hasGrowthData) {
-      mapped = mapped.filter((x) => (x.metrics.growthPercent ?? -1) >= Number(filters.minGrowth))
-    }
-
-    mapped = mapped.filter((x) =>
-      (x.metrics.growthViewsPerHour ?? x.metrics.averageViewsPerHour) >= Number(filters.minVph),
-    )
+    mapped = mapped.filter((x) => x.metrics.averageViewsPerHour >= Number(filters.minVph))
 
     mapped.sort((a, b) => {
       if (filters.ranking === 'views') return b.metrics.views - a.metrics.views
-      if (filters.ranking === 'growth') {
-        return (b.metrics.growthViewsPerHour ?? b.metrics.averageViewsPerHour)
-          - (a.metrics.growthViewsPerHour ?? a.metrics.averageViewsPerHour)
-      }
+      if (filters.ranking === 'vph') return b.metrics.averageViewsPerHour - a.metrics.averageViewsPerHour
       if (filters.ranking === 'engagement') return b.metrics.engagementRate - a.metrics.engagementRate
       if (filters.ranking === 'newest') {
         return +new Date(b.video.snippet.publishedAt) - +new Date(a.video.snippet.publishedAt)
@@ -146,10 +129,9 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       return b.metrics.risingScore - a.metrics.risingScore
     })
 
-    return { rows: mapped, hasGrowthData }
+    return mapped
   }, [videos, filters])
 
-  const { rows, hasGrowthData } = analysis
   const displayedRows = rows.slice(0, MAX_RESULTS_SHOWN)
   const keywordActive = Boolean(filters.keyword.trim())
 
@@ -159,9 +141,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       format: 'all',
       age: 'all',
       minViews: '0',
-      minGrowth: '0',
       minVph: '0',
-      period: '24',
       ranking: 'views',
     }))
   }
@@ -170,9 +150,9 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
     <main className="page-shell">
       <section className="hero">
         <div>
-          <span className="eyebrow">YOUTUBE MUSIC RESEARCH</span>
-          <h1>Music Trend Radar</h1>
-          <p>Cari video musik berdasarkan keyword yang benar-benar muncul pada judul, lalu urutkan berdasarkan views, umur video, growth, dan metrik lainnya.</p>
+          <span className="eyebrow">YOUTUBE VIDEO RESEARCH</span>
+          <h1>Video Trend Radar</h1>
+          <p>Cari semua jenis video YouTube berdasarkan keyword yang benar-benar muncul pada judul, lalu analisis views, kecepatan view, engagement, dan umur video.</p>
         </div>
         <div className="hero-badge">API: {loadSettings().apiKey ? 'Connected' : 'Not set'}</div>
       </section>
@@ -189,7 +169,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
       {hasRun && !loading && !error && keywordActive && (
         <div className="status-box success">
-          Pencarian global YouTube • Keyword Judul “{filters.keyword.trim()}” • {videos.length} kandidat judul cocok ditemukan.
+          Pencarian global semua kategori YouTube • Keyword Judul “{filters.keyword.trim()}” • {videos.length} kandidat judul cocok ditemukan.
         </div>
       )}
 
@@ -197,23 +177,17 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="status-box">Filter Shorts memakai durasi ≤ 3 menit sebagai estimasi.</div>
       )}
 
-      {hasRun && videos.length > 0 && Number(filters.minGrowth) > 0 && !hasGrowthData && (
-        <div className="status-box">
-          Minimum Growth belum bisa dihitung pada snapshot pertama. Hasil sementara tetap ditampilkan; lakukan riset ulang setelah beberapa waktu agar Growth mulai tersedia.
-        </div>
-      )}
-
       {hasRun && !loading && !error && rows.length > 0 && rows.length < MIN_RESULTS_TARGET && (
         <div className="status-box">
-          Ditemukan {rows.length} video yang benar-benar memenuhi keyword dan seluruh filter. Sistem tidak menambahkan video yang judulnya tidak cocok hanya untuk memaksa jumlah menjadi {MIN_RESULTS_TARGET}.
+          Ditemukan {rows.length} video yang benar-benar memenuhi keyword dan seluruh filter. Tool tidak memasukkan judul yang tidak cocok hanya untuk memaksa jumlah menjadi {MIN_RESULTS_TARGET}.
         </div>
       )}
 
       {!hasRun && !loading && !error && (
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
-          <h3>Cari berdasarkan judul</h3>
-          <p>Isi Keyword Judul, misalnya “dangdut koplo”, kemudian pilih umur video dan ranking lalu klik Mulai Riset.</p>
+          <h3>Cari video berdasarkan judul</h3>
+          <p>Masukkan keyword seperti “dangdut koplo”, “asam lambung”, “AI news”, “resep ayam”, atau topik lainnya.</p>
           <button className="btn primary" onClick={refresh}>▶ Mulai Riset</button>
         </div>
       )}
@@ -239,10 +213,10 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="table-card">
           <div className="table-head">
             <div>
-              <h2>Music Results</h2>
+              <h2>Video Results</h2>
               <p>Menampilkan {displayedRows.length} dari {rows.length} hasil • judul mengandung “{filters.keyword.trim()}”</p>
             </div>
-            <span className="snapshot-note">Default: view tertinggi. Growth makin akurat setelah beberapa snapshot.</span>
+            <span className="snapshot-note">Default: view tertinggi.</span>
           </div>
 
           <div className="video-list">
@@ -277,8 +251,8 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
                   </div>
 
                   <div className="metric"><b>{formatCompact(metrics.views)}</b><span>Views</span></div>
-                  <div className="metric"><b>{metrics.growthViews == null ? '—' : `+${formatCompact(metrics.growthViews)}`}</b><span>Growth</span></div>
-                  <div className="metric"><b>{formatCompact(metrics.growthViewsPerHour ?? metrics.averageViewsPerHour)}</b><span>Views/hour</span></div>
+                  <div className="metric"><b>{formatCompact(metrics.averageViewsPerHour)}</b><span>Avg views/hour</span></div>
+                  <div className="metric"><b>{metrics.engagementRate.toFixed(1)}%</b><span>Engagement</span></div>
                   <div className="score"><b>{metrics.risingScore}</b><span>Rising</span></div>
                 </article>
               )
