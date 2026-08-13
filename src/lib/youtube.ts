@@ -56,10 +56,6 @@ export async function getPopularMusic(apiKey: string, regionCode = 'ID', maxResu
   return videos
 }
 
-/**
- * Sinyal pasar publik paling kuat yang tersedia di YouTube Data API:
- * chart Music mostPopular untuk content region yang dipilih.
- */
 export async function getPopularMusicPool(apiKey: string, regionCode = 'ID', maxPages = 6) {
   const collected: YouTubeVideo[] = []
   let pageToken = ''
@@ -91,10 +87,13 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
     q: options.query,
     type: 'video',
     videoCategoryId: '10',
-    regionCode: options.regionCode || 'ID',
     maxResults: Math.min(50, options.maxResults || 50),
     order: options.order || 'relevance',
   }
+
+  // Jangan mengunci pencarian ke negara tertentu jika regionCode tidak diminta.
+  // Ini membuat mode Keyword Judul menjadi pencarian musik global.
+  if (options.regionCode) params.regionCode = options.regionCode
   if (options.relevanceLanguage) params.relevanceLanguage = options.relevanceLanguage
   if (options.publishedAfter) params.publishedAfter = options.publishedAfter
   if (options.videoDuration && options.videoDuration !== 'any') params.videoDuration = options.videoDuration
@@ -115,13 +114,7 @@ export async function searchMusic(apiKey: string, options: SearchMusicOptions) {
   }
 }
 
-/**
- * Pool tambahan ketika chart regional terlalu kecil untuk genre/subgenre tertentu.
- * Ini bukan data viewer geography yang eksak. Search.regionCode hanya membatasi
- * hasil yang dapat ditonton pada region, sedangkan relevanceLanguage membantu
- * membuat discovery lebih relevan dengan pasar yang dipilih.
- */
-export async function getRegionalDiscoveryPool(
+export async function getDiscoveryPool(
   apiKey: string,
   options: Omit<SearchMusicOptions, 'pageToken'>,
   maxPages = 3,
@@ -138,6 +131,9 @@ export async function getRegionalDiscoveryPool(
 
   return Array.from(new Map(collected.map((video) => [video.id, video])).values())
 }
+
+// Alias lama dipertahankan supaya kode lain yang mungkin masih memakainya tidak rusak.
+export const getRegionalDiscoveryPool = getDiscoveryPool
 
 export async function getVideosByIds(apiKey: string, ids: string[]) {
   if (!ids.length) return []
