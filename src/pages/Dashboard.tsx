@@ -10,6 +10,7 @@ const MIN_RESULTS_TARGET = 20
 const MAX_RESULTS_SHOWN = 50
 const REGIONAL_CHART_PAGES = 10
 const DISCOVERY_PAGES = 3
+const KEYWORD_SEARCH_PAGES = 5
 
 const MARKET_LANGUAGE: Record<string, string> = {
   ID: 'id', MY: 'ms', SG: 'en', PH: 'en', TH: 'th', VN: 'vi',
@@ -18,12 +19,27 @@ const MARKET_LANGUAGE: Record<string, string> = {
 }
 
 const initialFilters: Filters = {
-  country: 'ID', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'views',
+  country: 'ID', keyword: '', genre: 'All Genres', subgenre: 'All Subgenres', format: 'all', period: '24', ranking: 'views',
   age: 'all', minViews: '0', minGrowth: '0', minVph: '0', marketMode: 'accurate',
 }
 
 function dedupeVideos(videos: YouTubeVideo[]) {
   return Array.from(new Map(videos.map((video) => [video.id, video])).values())
+}
+
+function normalizeText(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function titleContainsKeyword(title: string, keyword: string) {
+  const normalizedKeyword = normalizeText(keyword)
+  if (!normalizedKeyword) return true
+  return normalizeText(title).includes(normalizedKeyword)
 }
 
 export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
@@ -35,7 +51,11 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
   const [hasRun, setHasRun] = useState(false)
 
   const handleFilterChange = (next: Filters) => {
-    if (next.country !== filters.country || next.marketMode !== filters.marketMode) {
+    if (
+      next.country !== filters.country ||
+      next.marketMode !== filters.marketMode ||
+      next.keyword !== filters.keyword
+    ) {
       setVideos([])
       setChartVideoIds([])
       setHasRun(false)
@@ -46,6 +66,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
   const qualifies = (video: YouTubeVideo) => {
     const metrics = calculateMetrics(video, Number(filters.period))
+    if (!titleContainsKeyword(video.snippet.title, filters.keyword)) return false
     if (filters.genre !== 'All Genres' && metrics.genre.genre !== filters.genre) return false
     if (filters.subgenre !== 'All Subgenres' && metrics.genre.subgenre !== filters.subgenre) return false
     if (filters.format !== 'all' && getVideoFormat(video) !== filters.format) return false
@@ -63,11 +84,41 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
     setError('')
 
     try {
+      const keyword = filters.keyword.trim()
+
+      // Keyword Judul memakai YouTube search untuk memperluas kandidat, lalu hasilnya
+      // tetap difilter ketat di browser agar keyword benar-benar ada pada JUDUL.
+      if (keyword) {
+        const ageHours = filters.age === 'all' ? null : Number(filters.age)
+        const publishedAfter = ageHours
+          ? new Date(Date.now() - ageHours * 3600_000).toISOString()
+          : undefined
+
+        const keywordItems = await getRegionalDiscoveryPool(apiKey, {
+          regionCode: filters.country,
+          relevanceLanguage: MARKET_LANGUAGE[filters.country] || 'en',
+          query: keyword,
+          maxResults: 50,
+          order: filters.ranking === 'newest' ? 'date' : 'viewCount',
+          publishedAfter,
+          videoDuration: filters.format === 'shorts' ? 'short' : 'any',
+        }, KEYWORD_SEARCH_PAGES)
+
+        const strictTitleMatches = dedupeVideos(keywordItems).filter((video) =>
+          titleContainsKeyword(video.snippet.title, keyword),
+        )
+
+        cacheVideos(strictTitleMatches)
+        setChartVideoIds([])
+        setVideos(strictTitleMatches)
+        saveVideoSnapshots(strictTitleMatches)
+        setHasRun(true)
+        return
+      }
+
       const chartItems = await getPopularMusicPool(apiKey, filters.country, REGIONAL_CHART_PAGES)
       let merged = [...chartItems]
 
-      // Accurate mode: hanya chart regional. Ini satu-satunya sinyal publik Data API
-      // yang benar-benar memilih chart berdasarkan content region.
       if (filters.marketMode === 'expanded') {
         const chartMatches = chartItems.filter(qualifies).length
         if (chartMatches < MIN_RESULTS_TARGET) {
@@ -115,6 +166,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
     const hasGrowthData = allMapped.some((x) => x.metrics.growthPercent != null)
     let mapped = [...allMapped]
 
+    if (filters.keyword.trim()) mapped = mapped.filter((x) => titleContainsKeyword(x.video.snippet.title, filters.keyword))
     if (filters.genre !== 'All Genres') mapped = mapped.filter((x) => x.metrics.genre.genre === filters.genre)
     if (filters.subgenre !== 'All Subgenres') mapped = mapped.filter((x) => x.metrics.genre.subgenre === filters.subgenre)
     if (filters.format !== 'all') mapped = mapped.filter((x) => getVideoFormat(x.video) === filters.format)
@@ -143,10 +195,12 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
   const chartIdSet = useMemo(() => new Set(chartVideoIds), [chartVideoIds])
   const chartResultCount = displayedRows.filter(({ video }) => chartIdSet.has(video.id)).length
   const discoveryResultCount = displayedRows.length - chartResultCount
+  const keywordActive = Boolean(filters.keyword.trim())
 
   const resetStrictFilters = () => {
     setFilters((current) => ({
       ...current,
+      keyword: '',
       genre: 'All Genres',
       subgenre: 'All Subgenres',
       format: 'all',
@@ -164,7 +218,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div>
           <span className="eyebrow">YOUTUBE MUSIC RESEARCH</span>
           <h1>Music Trend Radar</h1>
-          <p>Riset musik berdasarkan viewer market YouTube. Mode Akurat hanya memakai chart regional; mode Diperluas menambah discovery estimasi.</p>
+          <p>Cari musik berdasarkan market, genre, umur video, atau keyword yang harus muncul langsung pada judul video.</p>
         </div>
         <div className="hero-badge">API: {loadSettings().apiKey ? 'Connected' : 'Not set'}</div>
       </section>
@@ -173,19 +227,31 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
 
       {error && <div className="status-box error">{error}</div>}
 
-      {hasRun && !loading && !error && (
+      {keywordActive && hasRun && !loading && !error && (
+        <div className="status-box success">
+          Keyword Judul: “{filters.keyword.trim()}” • {videos.length} kandidat dengan judul yang cocok ditemukan. Hasil diurutkan sesuai Ranking yang dipilih.
+        </div>
+      )}
+
+      {!keywordActive && hasRun && !loading && !error && (
         <div className="status-box success">
           Viewer Market {filters.country} • Mode {filters.marketMode === 'accurate' ? 'Akurat Market' : 'Diperluas'} • {videos.length} kandidat dianalisis.
         </div>
       )}
 
-      {filters.marketMode === 'accurate' && hasRun && !loading && !error && (
+      {!keywordActive && filters.marketMode === 'accurate' && hasRun && !loading && !error && (
         <div className="status-box">
-          Mode Akurat hanya memakai YouTube regional mostPopular chart. Hasil antarnegara benar-benar berasal dari chart region yang dipilih, tetapi jumlah setelah filter genre/umur bisa kurang dari 20.
+          Mode Akurat hanya memakai YouTube regional mostPopular chart. Hasil antarnegara berasal dari chart region yang dipilih, tetapi jumlah setelah filter genre/umur bisa kurang dari 20.
         </div>
       )}
 
-      {filters.marketMode === 'expanded' && hasRun && !loading && !error && discoveryResultCount > 0 && (
+      {keywordActive && hasRun && !loading && !error && (
+        <div className="status-box">
+          Keyword Judul memakai pencarian YouTube untuk mencari kandidat lebih luas, lalu tool melakukan pencocokan ketat pada judul. Viewer Market tetap dipakai sebagai sinyal relevansi pencarian, bukan bukti negara penonton yang eksak.
+        </div>
+      )}
+
+      {!keywordActive && filters.marketMode === 'expanded' && hasRun && !loading && !error && discoveryResultCount > 0 && (
         <div className="status-box">
           {chartResultCount} hasil berasal dari Regional Chart dan {discoveryResultCount} hasil tambahan dari Regional Discovery. Discovery membantu mencapai lebih banyak hasil, tetapi bukan data negara penonton yang eksak.
         </div>
@@ -201,7 +267,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         </div>
       )}
 
-      {filters.marketMode === 'expanded' && hasRun && !loading && !error && rows.length > 0 && rows.length < MIN_RESULTS_TARGET && (
+      {!keywordActive && filters.marketMode === 'expanded' && hasRun && !loading && !error && rows.length > 0 && rows.length < MIN_RESULTS_TARGET && (
         <div className="status-box">
           Mode Diperluas sudah mencoba menambah discovery, tetapi hanya {rows.length} video yang memenuhi seluruh filter aktif. Longgarkan filter jika ingin minimal {MIN_RESULTS_TARGET} hasil.
         </div>
@@ -211,7 +277,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="empty-state">
           <div className="empty-icon">♫</div>
           <h3>Siap mulai riset</h3>
-          <p>Pilih Viewer Market dan filter, lalu klik Mulai Riset. Default menggunakan Mode Akurat Market agar pergantian negara tidak tercampur hasil discovery global.</p>
+          <p>Isi Keyword Judul jika ingin pencarian spesifik seperti “dangdut koplo”, atau gunakan filter market/genre seperti biasa.</p>
           <button className="btn primary" onClick={refresh}>▶ Mulai Riset</button>
         </div>
       )}
@@ -219,8 +285,8 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
       {hasRun && !loading && !error && videos.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
-          <h3>Tidak ada kandidat</h3>
-          <p>Coba viewer market lain atau ulangi beberapa saat lagi.</p>
+          <h3>{keywordActive ? 'Tidak ada judul yang cocok' : 'Tidak ada kandidat'}</h3>
+          <p>{keywordActive ? `Tidak ditemukan video dengan judul yang mengandung “${filters.keyword.trim()}” untuk filter aktif.` : 'Coba viewer market lain atau ulangi beberapa saat lagi.'}</p>
         </div>
       )}
 
@@ -228,7 +294,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
         <div className="empty-state">
           <div className="empty-icon">⌕</div>
           <h3>Data ditemukan, tetapi tidak lolos filter</h3>
-          <p>{videos.length} kandidat telah dianalisis untuk viewer market {filters.country}, tetapi tidak ada yang memenuhi seluruh filter aktif.</p>
+          <p>{videos.length} kandidat ditemukan, tetapi tidak ada yang memenuhi seluruh filter aktif.</p>
           <button className="btn secondary" onClick={resetStrictFilters}>Reset Filter Ketat</button>
         </div>
       )}
@@ -238,7 +304,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
           <div className="table-head">
             <div>
               <h2>Music Results</h2>
-              <p>Menampilkan {displayedRows.length} dari {rows.length} hasil • viewer market {filters.country}</p>
+              <p>Menampilkan {displayedRows.length} dari {rows.length} hasil{keywordActive ? ` • judul mengandung “${filters.keyword.trim()}”` : ` • viewer market ${filters.country}`}</p>
             </div>
             <span className="snapshot-note">Default: view tertinggi. Growth makin akurat setelah beberapa snapshot.</span>
           </div>
@@ -255,7 +321,7 @@ export function Dashboard({ onNeedApiKey }: { onNeedApiKey: () => void }) {
                     <Link to={`/video/${video.id}`} className="video-title">{video.snippet.title}</Link>
                     <Link to={`/channel/${video.snippet.channelId}`} className="channel-link">{video.snippet.channelTitle}</Link>
                     <div className="chips">
-                      <span>{isChart ? 'Regional Chart' : 'Discovery Estimate'}</span>
+                      <span>{keywordActive ? 'Title Match' : isChart ? 'Regional Chart' : 'Discovery Estimate'}</span>
                       <span>{videoFormat === 'shorts' ? 'Shorts ≤3m' : 'Video'}</span>
                       <span>{formatDuration(video.contentDetails?.duration)}</span>
                       <span>{metrics.genre.genre}</span>
