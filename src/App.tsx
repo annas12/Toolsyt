@@ -16,11 +16,11 @@ export default function App() {
       <BrowserRouter>
         <header className="topbar">
           <Link to="/" className="brand">
-            <div className="brand-mark">M</div>
-            <div><b>Music Trend Radar</b><span>YouTube Intelligence</span></div>
+            <div className="brand-mark">V</div>
+            <div><b>Video Trend Radar</b><span>YouTube Intelligence</span></div>
           </Link>
           <nav>
-            <Link to="/">Music Radar</Link>
+            <Link to="/">Video Radar</Link>
             <button className="api-button" onClick={() => setApiOpen(true)}>⚙ API Key</button>
           </nav>
         </header>
