@@ -3,6 +3,7 @@ import { GENRES } from '../lib/genres'
 
 export type Filters = {
   country: string
+  keyword: string
   genre: string
   subgenre: string
   format: string
@@ -37,6 +38,20 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
 
   return (
     <div className="filter-panel">
+      <div style={{ marginBottom: 14 }}>
+        <Field label="Keyword Judul">
+          <input
+            className="text-input"
+            type="text"
+            value={filters.keyword}
+            onChange={(e) => set('keyword', e.target.value)}
+            placeholder="Contoh: dangdut koplo"
+            onKeyDown={(e) => { if (e.key === 'Enter') onRefresh() }}
+          />
+        </Field>
+        <div className="help-text">Jika diisi, hanya video yang judulnya benar-benar mengandung keyword ini yang akan ditampilkan. Tekan Enter atau klik Mulai Riset.</div>
+      </div>
+
       <div className="filter-grid primary-filters">
         <Field label="Viewer Market">
           <select value={filters.country} onChange={(e) => set('country', e.target.value)}>
