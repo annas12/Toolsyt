@@ -5,6 +5,7 @@ export type Filters = {
   country: string
   genre: string
   subgenre: string
+  format: string
   period: string
   ranking: string
   age: string
@@ -50,6 +51,13 @@ export function FilterBar({ filters, onChange, onRefresh, loading, hasData }: Pr
           <select value={filters.subgenre} onChange={(e) => set('subgenre', e.target.value)} disabled={filters.genre === 'All Genres'}>
             <option>All Subgenres</option>
             {subs.map((g) => <option key={g}>{g}</option>)}
+          </select>
+        </Field>
+        <Field label="Format">
+          <select value={filters.format} onChange={(e) => set('format', e.target.value)}>
+            <option value="all">Semua Format</option>
+            <option value="video">Video (&gt; 3 menit)</option>
+            <option value="shorts">Shorts (≤ 3 menit)</option>
           </select>
         </Field>
         <Field label="Period">
