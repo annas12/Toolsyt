@@ -52,12 +52,20 @@ export function formatCompact(n: number) {
 }
 
 export function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Tanggal tidak tersedia'
+
+  // Gunakan komponen tanggal + waktu eksplisit. `dateStyle` tidak boleh
+  // dikombinasikan dengan opsi hour/minute pada Intl.DateTimeFormat.
   return new Intl.DateTimeFormat('id-ID', {
-    dateStyle: 'medium',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).format(new Date(value))
+    timeZone: 'Asia/Jakarta',
+  }).format(date)
 }
 
 export function formatAge(hours: number) {
